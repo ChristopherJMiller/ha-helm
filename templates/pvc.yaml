@@ -1,0 +1,14 @@
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "home-assistant.name" . }}-configs
+  labels:
+   {{- include "home-assistant.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: {{ .Values.haConfigStorage.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.haConfigStorage.size }}

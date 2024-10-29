@@ -1,0 +1,158 @@
+{{- $db := printf "%s-postgresql" .Release.Name -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "home-assistant.fullname" . }}
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "home-assistant.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "home-assistant.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: wait-for-db
+          image: docker.io/bitnami/postgresql:17
+          command:
+            - 'sh'
+            - '-e'
+            - '-c'
+            - 'until pg_isready -U "postgres" -h {{ .Release.Name }}-postgresql -p 5432; do sleep 1; done'
+        - name: create-ha-db-if-missing
+          image: docker.io/bitnami/postgresql:17
+          command:
+          - 'sh'
+          - '-e'
+          - '-c'
+          - |
+              echo $(DB_PASSWORD) && PGPASSWORD=$(DB_PASSWORD) psql -U postgres -h {{ $db }} -p 5432 -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.database.name }}'" | grep -q 1 || PGPASSWORD="$(DB_PASSWORD)" psql -U postgres -h {{ $db }} -p 5432 -c "CREATE DATABASE {{ .Values.database.name }}"
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db }}
+                  key: postgres-password
+        - name: generate-config
+          image: docker.io/busybox:1
+          command:
+            - 'sh'
+            - '-c'
+            - |
+              echo '
+              default_config:
+
+              # Load frontend themes from the themes folder
+              frontend:
+                themes: !include_dir_merge_named themes
+
+              automation: !include automations.yaml
+              script: !include scripts.yaml
+              scene: !include scenes.yaml
+
+              {{- toYaml .Values.haconfig | nindent 14 }}
+
+              # Required DB Section
+              recorder:
+                purge_keep_days: {{ .Values.database.purgeKeepDays }}
+                db_url: postgresql://postgres:$(DB_PASSWORD)@{{ $db }}/{{ .Values.database.name }}
+                exclude:
+                  {{- toYaml .Values.database.exclude | nindent 18 }}
+              ' > /config/configuration.yaml
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $db }}
+                  key: postgres-password
+          volumeMounts:
+            - mountPath: /config
+              name: config
+        - name: bootstrap-configs-if-needed
+          image: docker.io/busybox:1
+          command:
+            - 'sh'
+            - '-c'
+            - |
+              if [ ! -f /config/automations.yaml ]
+              then
+                  echo "[]" > /config/automations.yaml
+                  touch /config/scripts.yaml
+                  touch /config/scenes.yaml
+              fi
+          volumeMounts:
+            - mountPath: /config
+              name: persist-configs
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - mountPath: /config/configuration.yaml
+              name: config
+              subPath: configuration.yaml
+            - mountPath: /config/automations.yaml
+              name: persist-configs
+              subPath: automations.yaml
+            - mountPath: /config/scenes.yaml
+              name: persist-configs
+              subPath: scenes.yaml
+            - mountPath: /config/scripts.yaml
+              name: persist-configs
+              subPath: scripts.yaml
+          {{- with .Values.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          emptyDir:
+            medium: Memory
+        - name: persist-configs
+          persistentVolumeClaim:
+            claimName: {{ include "home-assistant.name" . }}-configs
+      {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

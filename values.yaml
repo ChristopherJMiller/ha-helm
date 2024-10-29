@@ -2,8 +2,35 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
+database:
+  name: homeassistant
+  purgeKeepDays: 10
+  exclude:
+    domains:
+      - automation
+      - update
+    entity_globs:
+      - sensor.sun*
+      - weather.*
+    entities:
+      - sensor.date
+      - sensor.last_boot # Comes from 'systemmonitor' sensor platform
+      - sun.sun # Don't record sun data
+    event_types:
+      - call_service # Don't record actions
+
+haconfig:
+  http:
+    use_x_forwarded_for: true
+    trusted_proxies:
+      - 10.0.0.0/16
+
+haConfigStorage:
+  storageClassName: standard
+  size: 1Gi
+
 image:
-  repository: docker.io/homeassistant
+  repository: docker.io/homeassistant/home-assistant
   pullPolicy: IfNotPresent
   # Overrides the image tag whose default is the chart appVersion.
   tag: ""
@@ -15,9 +42,7 @@ fullnameOverride: ""
 podAnnotations: {}
 podLabels: {}
 
-podSecurityContext:
-  {}
-  # fsGroup: 2000
+podSecurityContext: {}
 
 securityContext:
   {}
