@@ -1,4 +1,9 @@
-{{- $db := printf "%s-postgresql" .Release.Name -}}
+{{- $db_host := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.host -}}
+{{- $db_port := default "5432" .Values.externalPostgres.port -}}
+{{- $db_user := default "postgres" .Values.externalPostgres.username -}}
+{{- $db_secret_name := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.name -}}
+{{- $db_secret_key := default "postgres-password" .Values.externalPostgres.key -}}
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -37,7 +42,7 @@ spec:
             - 'sh'
             - '-e'
             - '-c'
-            - 'until pg_isready -U "postgres" -h {{ .Release.Name }}-postgresql -p 5432; do sleep 1; done'
+            - 'until pg_isready -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }}; do sleep 1; done'
         - name: create-ha-db-if-missing
           image: docker.io/bitnami/postgresql:17
           command:
@@ -45,13 +50,13 @@ spec:
           - '-e'
           - '-c'
           - |
-              echo $(DB_PASSWORD) && PGPASSWORD=$(DB_PASSWORD) psql -U postgres -h {{ $db }} -p 5432 -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.database.name }}'" | grep -q 1 || PGPASSWORD="$(DB_PASSWORD)" psql -U postgres -h {{ $db }} -p 5432 -c "CREATE DATABASE {{ .Values.database.name }}"
+              echo $(DB_PASSWORD) && PGPASSWORD=$(DB_PASSWORD) psql -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }} -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.database.name }}'" | grep -q 1 || PGPASSWORD="$(DB_PASSWORD)" psql -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }} -c "CREATE DATABASE {{ .Values.database.name }}"
           env:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $db }}
-                  key: postgres-password
+                  name: {{ $db_secret_name }}
+                  key: {{ $db_secret_key }}
         - name: generate-config
           image: docker.io/busybox:1
           command:
@@ -74,7 +79,7 @@ spec:
               # Required DB Section
               recorder:
                 purge_keep_days: {{ .Values.database.purgeKeepDays }}
-                db_url: postgresql://postgres:$(DB_PASSWORD)@{{ $db }}/{{ .Values.database.name }}
+                db_url: postgresql://{{ $db_user }}:$(DB_PASSWORD)@{{ $db_host }}:{{ $db_port }}/{{ .Values.database.name }}
                 exclude:
                   {{- toYaml .Values.database.exclude | nindent 18 }}
               ' > /config/configuration.yaml
@@ -82,8 +87,8 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $db }}
-                  key: postgres-password
+                  name: {{ $db_secret_name }}
+                  key: {{ $db_secret_key }}
           volumeMounts:
             - mountPath: /config
               name: config
