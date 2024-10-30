@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "home-assistant.name" . }}-configs
+  name: {{ include "home-assistant.name" . }}-persist
   labels:
    {{- include "home-assistant.labels" . | nindent 4 }}
 spec:

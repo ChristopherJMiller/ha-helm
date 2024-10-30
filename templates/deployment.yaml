@@ -119,18 +119,11 @@ spec:
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           volumeMounts:
+            - mountPath: /config
+              name: persist-configs
             - mountPath: /config/configuration.yaml
               name: config
               subPath: configuration.yaml
-            - mountPath: /config/automations.yaml
-              name: persist-configs
-              subPath: automations.yaml
-            - mountPath: /config/scenes.yaml
-              name: persist-configs
-              subPath: scenes.yaml
-            - mountPath: /config/scripts.yaml
-              name: persist-configs
-              subPath: scripts.yaml
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
@@ -140,7 +133,7 @@ spec:
             medium: Memory
         - name: persist-configs
           persistentVolumeClaim:
-            claimName: {{ include "home-assistant.name" . }}-configs
+            claimName: {{ include "home-assistant.name" . }}-persist
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
