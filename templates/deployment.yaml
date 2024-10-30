@@ -1,8 +1,8 @@
 {{- $db_host := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.host -}}
 {{- $db_port := default "5432" .Values.externalPostgres.port -}}
 {{- $db_user := default "postgres" .Values.externalPostgres.username -}}
-{{- $db_secret_name := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.name -}}
-{{- $db_secret_key := default "postgres-password" .Values.externalPostgres.key -}}
+{{- $db_secret_name := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.passwordFromSecretKeyRef.name -}}
+{{- $db_secret_key := default "postgres-password" .Values.externalPostgres.passwordFromSecretKeyRef.key -}}
 
 apiVersion: apps/v1
 kind: Deployment
