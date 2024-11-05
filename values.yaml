@@ -8,13 +8,15 @@ postgresql:
     persistence:
       size: 10Gi
 
-externalPostgres: {}
-#   host: "psql-host"
-#   port: 5432
-#   username: postgres
-#   passwordFromSecretKeyRef:
+externalPostgres:
+  #   host: "psql-host"
+  #   port: 5432
+  #   username: postgres
+  passwordFromSecretKeyRef: {}
 #     name: "psql-user"
 #     key: "psql-key"
+
+hacs: true
 
 database:
   name: homeassistant

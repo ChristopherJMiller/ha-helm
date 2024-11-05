@@ -3,7 +3,6 @@
 {{- $db_user := default "postgres" .Values.externalPostgres.username -}}
 {{- $db_secret_name := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.passwordFromSecretKeyRef.name -}}
 {{- $db_secret_key := default "postgres-password" .Values.externalPostgres.passwordFromSecretKeyRef.key -}}
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -100,6 +99,7 @@ spec:
             - |
               if [ ! -f /config/automations.yaml ]
               then
+                  echo "Creating first time configs"
                   echo "[]" > /config/automations.yaml
                   touch /config/scripts.yaml
                   touch /config/scenes.yaml
@@ -107,6 +107,24 @@ spec:
           volumeMounts:
             - mountPath: /config
               name: persist-configs
+      {{- if .Values.hacs }}
+        - name: bootstrap-hacs-if-needed
+          image: docker.io/alpine:3.20
+          command:
+            - 'sh'
+            - '-c'
+            - |
+              if [ ! -f /config/custom_components/hacs/__init__.py ]
+              then
+                  apk update
+                  apk add bash
+                  cd /config
+                  wget -O - https://get.hacs.xyz | bash -
+              fi
+          volumeMounts:
+            - mountPath: /config
+              name: persist-configs
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
