@@ -1,0 +1,161 @@
+name: Validate Helm Chart
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install chart-testing
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: Run chart-testing (list-changed)
+        id: list-changed
+        run: |
+          changed=$(ct list-changed --target-branch ${{ github.event.repository.default_branch }})
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run chart-testing (lint)
+        if: steps.list-changed.outputs.changed == 'true' || github.event_name == 'push'
+        run: ct lint --target-branch ${{ github.event.repository.default_branch }} --config .github/ct.yaml || ct lint --all --config .github/ct.yaml
+
+  unittest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+
+      - name: Install helm-unittest
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Run helm dependency build
+        run: helm dependency build
+
+      - name: Run helm unittest
+        run: helm unittest .
+
+  validate-templates:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Test different value combinations
+        values:
+          - description: "Default values"
+            args: ""
+          - description: "With external PostgreSQL"
+            args: "--set postgresql.enabled=false,externalPostgres.host=postgres.example.com"
+          - description: "With DAV enabled"
+            args: "--set dav.enabled=true"
+          - description: "Without config generation"
+            args: "--set configGeneration.enabled=false"
+          - description: "With ingress enabled"
+            args: "--set ingress.enabled=true,ingress.hosts[0].host=ha.example.com,ingress.hosts[0].paths[0].path=/,ingress.hosts[0].paths[0].pathType=Prefix"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+
+      - name: Run helm dependency build
+        run: helm dependency build
+
+      - name: Validate templates - ${{ matrix.values.description }}
+        run: |
+          echo "Testing with: ${{ matrix.values.description }}"
+          helm template test-release . ${{ matrix.values.args }} > /tmp/rendered.yaml
+          echo "Templates rendered successfully"
+          
+          # Basic validation - check if YAML is valid
+          if ! command -v yamllint &> /dev/null; then
+            sudo apt-get update && sudo apt-get install -y yamllint
+          fi
+          yamllint -d relaxed /tmp/rendered.yaml
+
+  install-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.15.0
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: kind
+
+      - name: Run helm dependency build
+        run: helm dependency build
+
+      - name: Test chart installation
+        run: |
+          # Install the chart
+          helm install test-release . \
+            --wait \
+            --timeout 5m \
+            --set postgresql.primary.persistence.enabled=false \
+            --set haConfigStorage.storageClassName=standard
+
+          # Check if deployment is ready
+          kubectl wait --for=condition=available --timeout=300s deployment/test-release-home-assistant
+
+          # Show pod status
+          kubectl get pods -l app.kubernetes.io/instance=test-release
+
+          # Check if service is created
+          kubectl get svc test-release-home-assistant
+
+      - name: Test with DAV enabled
+        run: |
+          # Upgrade with DAV enabled
+          helm upgrade test-release . \
+            --wait \
+            --timeout 5m \
+            --set postgresql.primary.persistence.enabled=false \
+            --set haConfigStorage.storageClassName=standard \
+            --set dav.enabled=true
+
+          # Check if both containers are running
+          kubectl wait --for=condition=ready --timeout=300s pod -l app.kubernetes.io/instance=test-release
+
+          # Verify DAV container is present
+          kubectl get pods -l app.kubernetes.io/instance=test-release -o jsonpath='{.items[0].spec.containers[*].name}' | grep nginx-dav
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          kubectl describe pods -l app.kubernetes.io/instance=test-release
+          kubectl logs -l app.kubernetes.io/instance=test-release --all-containers=true

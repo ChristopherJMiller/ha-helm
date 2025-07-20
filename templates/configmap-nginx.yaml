@@ -1,0 +1,11 @@
+{{- if .Values.dav.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "home-assistant.fullname" . }}-nginx-config
+  labels:
+    {{- include "home-assistant.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+{{ .Files.Get "files/nginx-dav.conf" | indent 4 }}
+{{- end }}

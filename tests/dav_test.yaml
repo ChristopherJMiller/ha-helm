@@ -1,0 +1,127 @@
+suite: dav functionality
+templates:
+  - deployment.yaml
+  - service.yaml
+  - configmap-nginx.yaml
+tests:
+  - it: should not create nginx sidecar when dav.enabled is false
+    set:
+      dav.enabled: false
+    templates:
+      - deployment.yaml
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.containers[1].name
+          pattern: "nginx-dav"
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: nginx-config
+
+  - it: should create nginx sidecar when dav.enabled is true
+    set:
+      dav.enabled: true
+    templates:
+      - deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].name
+          value: nginx-dav
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: nginx:alpine
+      - equal:
+          path: spec.template.spec.containers[1].ports[0].containerPort
+          value: 8080
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            mountPath: /config
+            name: persist-configs
+      - contains:
+          path: spec.template.spec.containers[1].volumeMounts
+          content:
+            mountPath: /etc/nginx/conf.d/default.conf
+            name: nginx-config
+            subPath: nginx.conf
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: nginx-config
+            configMap:
+              name: RELEASE-NAME-home-assistant-nginx-config
+
+  - it: should set custom nginx image when specified
+    set:
+      dav.enabled: true
+      dav.nginxImage.repository: custom/nginx-dav
+      dav.nginxImage.tag: "1.25"
+    templates:
+      - deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[1].image
+          value: custom/nginx-dav:1.25
+
+  - it: should not create nginx configmap when dav.enabled is false
+    set:
+      dav.enabled: false
+    templates:
+      - configmap-nginx.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create nginx configmap when dav.enabled is true
+    set:
+      dav.enabled: true
+    templates:
+      - configmap-nginx.yaml
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant-nginx-config
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: "listen 8080"
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: "dav_methods PUT DELETE MKCOL COPY MOVE"
+      - matchRegex:
+          path: data["nginx.conf"]
+          pattern: "proxy_pass http://localhost:8123/api/"
+
+  - it: should not expose dav port when dav.enabled is false
+    set:
+      dav.enabled: false
+    templates:
+      - service.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.ports
+          count: 1
+      - equal:
+          path: spec.ports[0].name
+          value: http
+
+  - it: should expose dav port when dav.enabled is true
+    set:
+      dav.enabled: true
+      dav.port: 9000
+    templates:
+      - service.yaml
+    asserts:
+      - lengthEqual:
+          path: spec.ports
+          count: 2
+      - equal:
+          path: spec.ports[1].name
+          value: dav
+      - equal:
+          path: spec.ports[1].port
+          value: 9000
+      - equal:
+          path: spec.ports[1].targetPort
+          value: dav

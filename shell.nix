@@ -1,4 +1,6 @@
-{ pkgs ? import (fetchTarball "https://github.com/NixOS/nixpkgs/archive/nixos-24.05.tar.gz") {} }:
+{
+  pkgs ? import <nixpkgs> { },
+}:
 
 pkgs.mkShell {
   packages = with pkgs; [
@@ -7,6 +9,7 @@ pkgs.mkShell {
     pre-commit
     kustomize
     kubernetes-helm
+    kubernetes-helmPlugins.helm-unittest
     minikube
   ];
 }

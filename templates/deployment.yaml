@@ -56,6 +56,7 @@ spec:
                 secretKeyRef:
                   name: {{ $db_secret_name }}
                   key: {{ $db_secret_key }}
+        {{- if .Values.configGeneration.enabled }}
         - name: generate-config
           image: docker.io/busybox:1
           command:
@@ -91,6 +92,7 @@ spec:
           volumeMounts:
             - mountPath: /config
               name: config
+        {{- end }}
         - name: bootstrap-configs-if-needed
           image: docker.io/busybox:1
           command:
@@ -144,19 +146,50 @@ spec:
           volumeMounts:
             - mountPath: /config
               name: persist-configs
+            {{- if .Values.configGeneration.enabled }}
             - mountPath: /config/configuration.yaml
               name: config
               subPath: configuration.yaml
+            {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- if .Values.dav.enabled }}
+        - name: nginx-dav
+          image: "{{ .Values.dav.nginxImage.repository }}:{{ .Values.dav.nginxImage.tag }}"
+          imagePullPolicy: {{ .Values.dav.nginxImage.pullPolicy }}
+          ports:
+            - name: dav
+              containerPort: {{ .Values.dav.port }}
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /config
+              name: persist-configs
+            - mountPath: /etc/nginx/conf.d/default.conf
+              name: nginx-config
+              subPath: nginx.conf
+          resources:
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+        {{- end }}
       volumes:
+        {{- if .Values.configGeneration.enabled }}
         - name: config
           emptyDir:
             medium: Memory
+        {{- end }}
         - name: persist-configs
           persistentVolumeClaim:
             claimName: {{ include "home-assistant.name" . }}-persist
+        {{- if .Values.dav.enabled }}
+        - name: nginx-config
+          configMap:
+            name: {{ include "home-assistant.fullname" . }}-nginx-config
+        {{- end }}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}

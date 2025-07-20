@@ -1,0 +1,39 @@
+suite: persistent volume claim
+templates:
+  - pvc.yaml
+tests:
+  - it: should create PVC with correct name
+    asserts:
+      - isKind:
+          of: PersistentVolumeClaim
+      - equal:
+          path: metadata.name
+          value: home-assistant-persist
+
+  - it: should set correct storage class
+    set:
+      haConfigStorage.storageClassName: fast-ssd
+    asserts:
+      - equal:
+          path: spec.storageClassName
+          value: fast-ssd
+
+  - it: should set correct storage size
+    set:
+      haConfigStorage.size: 10Gi
+    asserts:
+      - equal:
+          path: spec.resources.requests.storage
+          value: 10Gi
+
+  - it: should use default storage size
+    asserts:
+      - equal:
+          path: spec.resources.requests.storage
+          value: 1Gi
+
+  - it: should have ReadWriteOnce access mode
+    asserts:
+      - contains:
+          path: spec.accessModes
+          content: ReadWriteOnce

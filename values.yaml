@@ -18,6 +18,17 @@ externalPostgres:
 
 hacs: true
 
+configGeneration:
+  enabled: true
+
+dav:
+  enabled: false
+  port: 8080
+  nginxImage:
+    repository: nginx
+    tag: alpine
+    pullPolicy: IfNotPresent
+
 database:
   name: homeassistant
   purgeKeepDays: 10

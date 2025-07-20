@@ -1,0 +1,71 @@
+suite: config generation
+templates:
+  - deployment.yaml
+tests:
+  - it: should generate config when configGeneration.enabled is true
+    set:
+      configGeneration.enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[2].name
+          pattern: "generate-config"
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /config/configuration.yaml
+            name: config
+            subPath: configuration.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: config
+            emptyDir:
+              medium: Memory
+
+  - it: should not generate config when configGeneration.enabled is false
+    set:
+      configGeneration.enabled: false
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[2].name
+          pattern: "generate-config"
+      - notContains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /config/configuration.yaml
+            name: config
+            subPath: configuration.yaml
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: config
+
+  - it: should include database config in generated configuration.yaml
+    set:
+      configGeneration.enabled: true
+      database:
+        name: testdb
+        purgeKeepDays: 30
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "purge_keep_days: 30"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "db_url:.*testdb"
+
+  - it: should include custom haconfig values
+    set:
+      configGeneration.enabled: true
+      haconfig:
+        logger:
+          default: info
+          logs:
+            homeassistant.core: debug
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "logger:"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "default: info"

@@ -1,0 +1,104 @@
+suite: deployment
+templates:
+  - deployment.yaml
+tests:
+  - it: should create deployment with correct name
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-home-assistant
+
+  - it: should have correct container image
+    set:
+      image.repository: custom/homeassistant
+      image.tag: "2023.12.0"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: custom/homeassistant:2023.12.0
+
+  - it: should use chart appVersion when image.tag is not set
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: "docker.io/homeassistant/home-assistant:.*"
+
+  - it: should set resources when specified
+    set:
+      resources:
+        limits:
+          cpu: 1000m
+          memory: 2Gi
+        requests:
+          cpu: 500m
+          memory: 1Gi
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 1000m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 2Gi
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 500m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 1Gi
+
+  - it: should mount persistent volume
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /config
+            name: persist-configs
+
+  - it: should have bootstrap-configs-if-needed init container
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[3].name
+          pattern: "bootstrap-configs-if-needed"
+
+  - it: should install HACS when enabled
+    set:
+      hacs: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[4].name
+          pattern: "bootstrap-hacs-if-needed"
+
+  - it: should not install HACS when disabled
+    set:
+      hacs: false
+    asserts:
+      - isNull:
+          path: spec.template.spec.initContainers[4]
+
+  - it: should create database when postgresql is enabled
+    set:
+      postgresql.enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].name
+          pattern: "create-ha-db-if-missing"
+
+  - it: should use external postgres when configured
+    set:
+      postgresql.enabled: false
+      externalPostgres:
+        host: external-db
+        port: 5432
+        username: myuser
+        passwordFromSecretKeyRef:
+          name: db-secret
+          key: password
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[1].command[3]
+          pattern: "external-db"
+      - equal:
+          path: spec.template.spec.initContainers[1].env[0].valueFrom.secretKeyRef.name
+          value: db-secret
