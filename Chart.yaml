@@ -1,6 +1,6 @@
 apiVersion: v2
 name: home-assistant
-description: A Helm chart for Home Assistant Backed by PostgresQL
+description: A Helm chart for Home Assistant, fronted by an external PostgreSQL
 
 # A chart can be either an 'application' or a 'library' chart.
 #
@@ -23,9 +23,8 @@ version: 0.3.0
 # It is recommended to use it with quotes.
 appVersion: "2025.7"
 
-# Chart dependencies
-dependencies:
-  - name: postgresql
-    version: 16.0.4
-    repository: oci://registry-1.docker.io/bitnamicharts
-    condition: postgresql.enabled
+# No chart dependencies. Postgres is always supplied externally
+# (cluster/luma-homeops uses Zalando's postgres-operator). The Bitnami
+# postgresql subchart was removed in 0.3.0 — Argo's `helm dependency
+# build` step was hitting docker.io rate limits even though
+# postgresql.enabled was false in every consumer.
