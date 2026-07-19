@@ -2,12 +2,6 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-postgresql:
-  enabled: true
-  primary:
-    persistence:
-      size: 10Gi
-
 externalPostgres:
   #   host: "psql-host"
   #   port: 5432
@@ -15,6 +9,14 @@ externalPostgres:
   passwordFromSecretKeyRef: {}
 #     name: "psql-user"
 #     key: "psql-key"
+
+# Image for the DB bootstrap init containers (wait-for-db, create-ha-db).
+# Needs `pg_isready` + `psql`; the official postgres image ships both.
+# (Replaces the retired docker.io/bitnami/postgresql image.)
+dbClientImage:
+  repository: postgres
+  tag: "17-alpine"
+  pullPolicy: IfNotPresent
 
 hacs: true
 
