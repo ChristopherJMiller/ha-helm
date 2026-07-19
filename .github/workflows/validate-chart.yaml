@@ -176,10 +176,13 @@ jobs:
 
       - name: Test chart installation
         run: |
-          # Install the chart
+          # Install the chart. HACS is disabled for the smoke test: its
+          # bootstrap downloads from get.hacs.xyz and needs a fully seeded HA
+          # config dir, which isn't suitable for a hermetic kind install.
           helm install test-release . \
             --wait \
             --timeout 5m \
+            --set hacs=false \
             --set haConfigStorage.storageClassName=standard
 
           # Check if deployment is ready
@@ -197,6 +200,7 @@ jobs:
           helm upgrade test-release . \
             --wait \
             --timeout 5m \
+            --set hacs=false \
             --set haConfigStorage.storageClassName=standard \
             --set dav.enabled=true
 
