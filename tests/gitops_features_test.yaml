@@ -1,0 +1,173 @@
+suite: gitops config features
+templates:
+  - deployment.yaml
+tests:
+  # --- backward compatibility -------------------------------------------------
+  - it: emits no homeassistant block, no lovelace, no extra mounts, no check-config at defaults
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "homeassistant:"
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "lovelace:"
+      - isNull:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")]
+
+  # --- externalUrl + packages: single merged homeassistant block --------------
+  - it: renders external_url into a single homeassistant block
+    set:
+      externalUrl: https://ha.example.com
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "(?s)homeassistant:.*homeassistant:"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "external_url: https://ha.example.com"
+
+  - it: adds unquoted packages include when packages.enabled
+    set:
+      packages.enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "packages: !include_dir_named packages/"
+
+  - it: merges externalUrl + packages + haconfig.homeassistant into ONE homeassistant block
+    set:
+      externalUrl: https://ha.example.com
+      packages.enabled: true
+      haconfig:
+        homeassistant:
+          time_zone: America/New_York
+    asserts:
+      # Exactly one homeassistant: key — no duplicate block
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "(?s)homeassistant:.*homeassistant:"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "external_url: https://ha.example.com"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "time_zone: America/New_York"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "packages: !include_dir_named packages/"
+
+  # --- extraConfigMounts ------------------------------------------------------
+  - it: mounts ConfigMap and Secret directories on the HA container
+    set:
+      extraConfigMounts:
+        - name: packages
+          configMap: ha-packages
+          mountPath: /config/packages
+        - name: secrets
+          secret: ha-secrets
+          mountPath: /config/secrets-dir
+          optional: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: packages
+            mountPath: /config/packages
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: packages
+            configMap:
+              name: ha-packages
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: secrets
+            secret:
+              secretName: ha-secrets
+              optional: true
+
+  - it: does not add extra volumes/mounts at defaults
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: packages
+            configMap:
+              name: ha-packages
+
+  # --- checkConfig ------------------------------------------------------------
+  - it: adds the check-config init container when enabled, using the HA image
+    set:
+      checkConfig.enabled: true
+      image.tag: "2025.7"
+    asserts:
+      - isNotNull:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].name
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].image
+          value: docker.io/homeassistant/home-assistant:2025.7
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].command
+          content: check_config
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].volumeMounts
+          content:
+            mountPath: /config/configuration.yaml
+            name: config
+            subPath: configuration.yaml
+
+  - it: check-config init container sees extraConfigMounts
+    set:
+      checkConfig.enabled: true
+      extraConfigMounts:
+        - name: packages
+          configMap: ha-packages
+          mountPath: /config/packages
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].volumeMounts
+          content:
+            name: packages
+            mountPath: /config/packages
+            readOnly: true
+
+  - it: has no check-config init container by default
+    asserts:
+      - isNull:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")]
+
+  # --- lovelace ---------------------------------------------------------------
+  - it: renders a lovelace block with a per-dashboard yaml mode (not global yaml)
+    set:
+      lovelace:
+        enabled: true
+        dashboards:
+          - urlPath: lovelace-home
+            filename: dashboards/home.yaml
+            title: Home
+            icon: mdi:home
+            showInSidebar: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "lovelace:"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "mode: storage"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "lovelace-home:"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "filename: dashboards/home.yaml"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "show_in_sidebar: true"
+
+  - it: has no lovelace block by default
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "lovelace:"

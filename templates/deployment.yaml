@@ -3,6 +3,39 @@
 {{- $db_user := default "postgres" .Values.externalPostgres.username -}}
 {{- $db_secret_name := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.passwordFromSecretKeyRef.name -}}
 {{- $db_secret_key := default "postgres-password" .Values.externalPostgres.passwordFromSecretKeyRef.key -}}
+{{/*
+Build a single, merged `homeassistant:` map for the generated configuration.yaml.
+Consumers may pass `haconfig.homeassistant`; `externalUrl` and `packages` merge
+into that same map so exactly one `homeassistant:` block is emitted.
+*/}}
+{{- $ha := dict -}}
+{{- with .Values.haconfig -}}
+  {{- with .homeassistant -}}
+    {{- $ha = deepCopy . -}}
+  {{- end -}}
+{{- end -}}
+{{- if .Values.externalUrl -}}
+  {{- $_ := set $ha "external_url" .Values.externalUrl -}}
+{{- end -}}
+{{- if and .Values.packages .Values.packages.enabled -}}
+  {{- $_ := unset $ha "packages" -}}
+{{- end -}}
+{{- $haRest := omit (.Values.haconfig | default dict) "homeassistant" -}}
+{{- $emitHa := or (gt (len $ha) 0) (and .Values.packages .Values.packages.enabled) -}}
+{{/* Build the lovelace map (YAML-mode dashboards alongside the storage dashboard). */}}
+{{- $lovelace := dict -}}
+{{- if and .Values.lovelace .Values.lovelace.enabled -}}
+  {{- $_ := set $lovelace "mode" (default "storage" .Values.lovelace.mode) -}}
+  {{- $dashboards := dict -}}
+  {{- range .Values.lovelace.dashboards -}}
+    {{- $d := dict "mode" (default "yaml" .mode) "filename" .filename "title" .title -}}
+    {{- if hasKey . "icon" -}}{{- $_ := set $d "icon" .icon -}}{{- end -}}
+    {{- if hasKey . "showInSidebar" -}}{{- $_ := set $d "show_in_sidebar" .showInSidebar -}}{{- end -}}
+    {{- if hasKey . "requireAdmin" -}}{{- $_ := set $d "require_admin" .requireAdmin -}}{{- end -}}
+    {{- $_ := set $dashboards .urlPath $d -}}
+  {{- end -}}
+  {{- $_ := set $lovelace "dashboards" $dashboards -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -74,7 +107,20 @@ spec:
               script: !include scripts.yaml
               scene: !include scenes.yaml
 
-              {{- toYaml .Values.haconfig | nindent 14 }}
+              {{- if $emitHa }}
+              homeassistant:
+              {{- if gt (len $ha) 0 }}
+              {{- toYaml $ha | nindent 16 }}
+              {{- end }}
+              {{- if and .Values.packages .Values.packages.enabled }}
+                packages: !include_dir_named packages/
+              {{- end }}
+              {{- end }}
+              {{- if gt (len $lovelace) 0 }}
+              lovelace:
+              {{- toYaml $lovelace | nindent 16 }}
+              {{- end }}
+              {{- toYaml $haRest | nindent 14 }}
 
               # Required DB Section
               recorder:
@@ -127,6 +173,30 @@ spec:
             - mountPath: /config
               name: persist-configs
       {{- end }}
+      {{- if and .Values.checkConfig .Values.checkConfig.enabled }}
+        - name: check-config
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - 'python'
+            - '-m'
+            - 'homeassistant'
+            - '--script'
+            - 'check_config'
+            - '-c'
+            - '/config'
+          volumeMounts:
+            - mountPath: /config
+              name: persist-configs
+            {{- if .Values.configGeneration.enabled }}
+            - mountPath: /config/configuration.yaml
+              name: config
+              subPath: configuration.yaml
+            {{- end }}
+            {{- with .Values.extraConfigMounts }}
+            {{- include "home-assistant.extraConfigVolumeMounts" . | trimPrefix "\n" | nindent 12 }}
+            {{- end }}
+      {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           securityContext:
@@ -150,6 +220,9 @@ spec:
             - mountPath: /config/configuration.yaml
               name: config
               subPath: configuration.yaml
+            {{- end }}
+            {{- with .Values.extraConfigMounts }}
+            {{- include "home-assistant.extraConfigVolumeMounts" . | trimPrefix "\n" | nindent 12 }}
             {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -189,6 +262,9 @@ spec:
         - name: nginx-config
           configMap:
             name: {{ include "home-assistant.fullname" . }}-nginx-config
+        {{- end }}
+        {{- with .Values.extraConfigMounts }}
+        {{- include "home-assistant.extraConfigVolumes" . | trimPrefix "\n" | nindent 8 }}
         {{- end }}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
