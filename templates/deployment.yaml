@@ -69,14 +69,16 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         - name: wait-for-db
-          image: docker.io/bitnami/postgresql:17
+          image: "{{ .Values.dbClientImage.repository }}:{{ .Values.dbClientImage.tag }}"
+          imagePullPolicy: {{ .Values.dbClientImage.pullPolicy }}
           command:
             - 'sh'
             - '-e'
             - '-c'
             - 'until pg_isready -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }}; do sleep 1; done'
         - name: create-ha-db-if-missing
-          image: docker.io/bitnami/postgresql:17
+          image: "{{ .Values.dbClientImage.repository }}:{{ .Values.dbClientImage.tag }}"
+          imagePullPolicy: {{ .Values.dbClientImage.pullPolicy }}
           command:
           - 'sh'
           - '-e'
