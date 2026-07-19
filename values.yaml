@@ -21,6 +21,61 @@ hacs: true
 configGeneration:
   enabled: true
 
+# Home Assistant's external URL. When set, rendered as `external_url` into the
+# (single, merged) `homeassistant:` block of the generated configuration.yaml.
+# Prefer this over setting haconfig.homeassistant.external_url.
+externalUrl: ""
+
+# YAML packages (https://www.home-assistant.io/docs/configuration/packages/).
+# When enabled, adds `homeassistant: packages: !include_dir_named packages/` to
+# the generated config. Provide the package files at /config/packages via an
+# extraConfigMounts entry pointing a ConfigMap at mountPath /config/packages.
+packages:
+  enabled: false
+
+# Mount arbitrary ConfigMaps/Secrets as directories under /config. Use this to
+# deliver git-tracked HA config (packages, dashboards, etc.) that the consuming
+# repo builds out of band (e.g. kustomize configMapGenerator). These are
+# DIRECTORY mounts (no subPath) so ConfigMap/Secret updates propagate live.
+# Each entry needs `name`, a `mountPath`, and exactly one of `configMap` or
+# `secret`. Optional: `optional`, `defaultMode`, `readOnly` (default true),
+# `subPath`.
+extraConfigMounts: []
+# - name: packages
+#   configMap: ha-packages
+#   mountPath: /config/packages
+# - name: dashboards
+#   configMap: ha-dashboards
+#   mountPath: /config/dashboards
+# - name: secrets
+#   secret: ha-secrets
+#   mountPath: /config/secrets-dir
+
+# Fail-fast config validation. When enabled, an init container runs
+# `homeassistant --script check_config -c /config` after config generation and
+# after extraConfigMounts are mounted, so an invalid automation/package blocks
+# pod startup instead of taking a running HA down. Uses the same HA image/tag
+# as the main container and sees mounted packages/dashboards + HACS components.
+checkConfig:
+  enabled: false
+
+# YAML-mode Lovelace dashboards ALONGSIDE the default storage-mode dashboard.
+# The global mode stays `storage` (do NOT set mode: yaml globally — it breaks
+# HACS custom-card resource auto-registration). Dashboard files come from an
+# extraConfigMounts directory (e.g. /config/dashboards).
+lovelace:
+  enabled: false
+  # Global lovelace mode. Leave as "storage" to keep the default UI dashboard
+  # editable; YAML dashboards below are added independently.
+  mode: storage
+  dashboards: []
+  # - urlPath: lovelace-home        # required; the dashboard's URL path
+  #   filename: dashboards/home.yaml # required; relative to /config
+  #   title: Home                    # required
+  #   icon: mdi:home                 # optional
+  #   showInSidebar: true            # optional -> show_in_sidebar
+  #   requireAdmin: false            # optional -> require_admin
+
 dav:
   enabled: false
   port: 8080

@@ -51,6 +51,50 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
+Volumes for extraConfigMounts (ConfigMap/Secret directory mounts under /config).
+Context is the .Values.extraConfigMounts list. Callers should guard with `with`.
+*/}}
+{{- define "home-assistant.extraConfigVolumes" -}}
+{{- range . }}
+- name: {{ .name }}
+  {{- if .configMap }}
+  configMap:
+    name: {{ .configMap }}
+    {{- if hasKey . "defaultMode" }}
+    defaultMode: {{ .defaultMode }}
+    {{- end }}
+    {{- if hasKey . "optional" }}
+    optional: {{ .optional }}
+    {{- end }}
+  {{- else if .secret }}
+  secret:
+    secretName: {{ .secret }}
+    {{- if hasKey . "defaultMode" }}
+    defaultMode: {{ .defaultMode }}
+    {{- end }}
+    {{- if hasKey . "optional" }}
+    optional: {{ .optional }}
+    {{- end }}
+  {{- end }}
+{{- end }}
+{{- end -}}
+
+{{/*
+volumeMounts for extraConfigMounts. Directory mounts (no subPath) so ConfigMap
+updates propagate live. Context is the .Values.extraConfigMounts list.
+*/}}
+{{- define "home-assistant.extraConfigVolumeMounts" -}}
+{{- range . }}
+- name: {{ .name }}
+  mountPath: {{ .mountPath }}
+  {{- if .subPath }}
+  subPath: {{ .subPath }}
+  {{- end }}
+  readOnly: {{ .readOnly | default true }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Create the name of the service account to use
 */}}
 {{- define "home-assistant.serviceAccountName" -}}
