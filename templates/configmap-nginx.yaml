@@ -1,4 +1,6 @@
 {{- if .Values.dav.enabled -}}
+{{- /* indent pads blank lines with spaces; strip that trailing whitespace so the rendered ConfigMap is yamllint-clean */ -}}
+{{- $nginxConf := .Files.Get "files/nginx-dav.conf" | indent 4 -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -7,5 +9,5 @@ metadata:
     {{- include "home-assistant.labels" . | nindent 4 }}
 data:
   nginx.conf: |
-{{ .Files.Get "files/nginx-dav.conf" | indent 4 }}
+{{ regexReplaceAll "(?m) +$" $nginxConf "" }}
 {{- end }}
