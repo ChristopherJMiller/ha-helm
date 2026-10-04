@@ -32,7 +32,8 @@ components:
     repository: alpine
     tag: "3.20"
     pullPolicy: IfNotPresent
-  # Each: name (dir under custom_components), repo (owner/name), version (git tag).
+  # Each: name (dir under custom_components), repo (owner/name), version (git tag), and
+  # optionally url: a release zip (may contain {version}) for repos HACS installs as zip_release.
   integrations: []
   # Each: name (dir under www/community), repo, version, url (may contain {version}).
   cards: []

@@ -113,6 +113,10 @@ components:
     - name: adaptive_lighting            # dir under custom_components
       repo: basnijholt/adaptive-lighting
       version: v1.31.0                    # git tag
+    - name: smartrent                     # zip_release repo: install the release asset
+      repo: ZacheryThomas/homeassistant-smartrent
+      version: v0.5.5
+      url: https://github.com/ZacheryThomas/homeassistant-smartrent/releases/download/{version}/smartrent.zip
   cards:
     - name: lovelace-mushroom             # dir under www/community
       repo: piitaya/lovelace-mushroom

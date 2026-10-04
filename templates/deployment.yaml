@@ -168,29 +168,36 @@ spec:
             - '-c'
             - |
               set -eu
-              install_integration() {  # name repo version
-                marker="/config/custom_components/$1/.pinned-version"
-                if [ -f "$marker" ] && [ "$(cat "$marker")" = "$3" ]; then echo "$1 $3 present"; return; fi
+              install_integration() {  # name repo version [release-zip-url-with-{version}]
+                marker="/config/custom_components/$1/.pinned-version"; want="$3 ${4:-}"
+                if [ -f "$marker" ] && [ "$(cat "$marker")" = "$want" ]; then echo "$1 $3 present"; return; fi
                 tmp=$(mktemp -d)
-                wget -qO "$tmp/src.tgz" "https://github.com/$2/archive/refs/tags/$3.tar.gz"
-                tar -xzf "$tmp/src.tgz" -C "$tmp"
-                src=$(find "$tmp" -maxdepth 3 -type d -path "*/custom_components/$1" | head -n1)
-                [ -n "$src" ] || { echo "no custom_components/$1 in $2@$3" >&2; exit 1; }
+                if [ -n "${4:-}" ]; then
+                  # A release zip (HACS zip_release) is the integration dir itself; CI stamps versions into it.
+                  url=$(echo "$4" | sed "s/{version}/$3/g")
+                  wget -qO "$tmp/src.zip" "$url" && mkdir "$tmp/zip" && unzip -q "$tmp/src.zip" -d "$tmp/zip"
+                  src="$tmp/zip"; [ -d "$tmp/zip/$1" ] && src="$tmp/zip/$1"
+                else
+                  wget -qO "$tmp/src.tgz" "https://github.com/$2/archive/refs/tags/$3.tar.gz"
+                  tar -xzf "$tmp/src.tgz" -C "$tmp"
+                  src=$(find "$tmp" -maxdepth 3 -type d -path "*/custom_components/$1" | head -n1)
+                fi
+                [ -n "$src" ] && [ -f "$src/manifest.json" ] || { echo "no custom_components/$1 in $2@$3" >&2; exit 1; }
                 mkdir -p /config/custom_components && rm -rf "/config/custom_components/$1"
-                cp -r "$src" "/config/custom_components/$1" && echo "$3" > "$marker" && rm -rf "$tmp"
+                cp -r "$src" "/config/custom_components/$1" && echo "$want" > "$marker" && rm -rf "$tmp"
                 echo "installed $1 $3"
               }
               install_card() {  # name url-with-{version} version
-                dir="/config/www/community/$1"; marker="$dir/.pinned-version"
-                if [ -f "$marker" ] && [ "$(cat "$marker")" = "$3" ]; then echo "$1 $3 present"; return; fi
+                dir="/config/www/community/$1"; marker="$dir/.pinned-version"; want="$3 $2"
+                if [ -f "$marker" ] && [ "$(cat "$marker")" = "$want" ]; then echo "$1 $3 present"; return; fi
                 # Empty the dir: aiohttp serves a <file>.gz/.br sibling in preference to
                 # <file>, so a stale precompressed copy (HACS writes them) would shadow it.
                 url=$(echo "$2" | sed "s/{version}/$3/g"); rm -rf "$dir" && mkdir -p "$dir"
-                wget -qO "$dir/$(basename "$url")" "$url" && echo "$3" > "$marker"
+                wget -qO "$dir/$(basename "$url")" "$url" && echo "$want" > "$marker"
                 echo "installed $1 $3"
               }
               {{- range .Values.components.integrations }}
-              install_integration {{ .name | quote }} {{ .repo | quote }} {{ .version | quote }}
+              install_integration {{ .name | quote }} {{ .repo | quote }} {{ .version | quote }}{{ with .url }} {{ . | quote }}{{ end }}
               {{- end }}
               {{- range .Values.components.cards }}
               install_card {{ .name | quote }} {{ .url | quote }} {{ .version | quote }}

@@ -131,3 +131,32 @@ tests:
       - matchRegex:
           path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
           pattern: 'rm -rf "\$dir" && mkdir -p "\$dir"'
+
+  - it: an integration with a url installs from that release zip (HACS zip_release repos stamp versions into it)
+    set:
+      components:
+        enabled: true
+        integrations:
+          - name: smartrent
+            repo: ZacheryThomas/homeassistant-smartrent
+            version: v0.5.5
+            url: "https://github.com/ZacheryThomas/homeassistant-smartrent/releases/download/{version}/smartrent.zip"
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'install_integration "smartrent" "ZacheryThomas/homeassistant-smartrent" "v0.5.5" "https://github.com/ZacheryThomas/homeassistant-smartrent/releases/download/\{version\}/smartrent.zip"'
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'unzip -q'
+
+  - it: the installed marker records version AND source, so changing only the url reinstalls
+    set:
+      components:
+        enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'want="\$3 \$\{4:-\}"'
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'want="\$3 \$2"'
