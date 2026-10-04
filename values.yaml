@@ -123,11 +123,10 @@ database:
     event_types:
       - call_service # Don't record actions
 
-haconfig:
-  http:
-    use_x_forwarded_for: true
-    trusted_proxies:
-      - 10.0.0.0/16
+# Extra top-level configuration.yaml keys. No http: default: since HA 2026.9 the HTTP
+# config (use_x_forwarded_for, trusted_proxies, ...) lives in HA storage, set under
+# Settings -> System -> Network, and a YAML http: block is only imported once, then ignored.
+haconfig: {}
 
 haConfigStorage:
   storageClassName: standard

@@ -160,3 +160,15 @@ tests:
       - matchRegex:
           path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
           pattern: 'want="\$3 \$2"'
+
+  - it: no http block by default (HA 2026.9+ keeps the HTTP config in storage and ignores YAML)
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "(?m)^\\s*http:"
+
+  - it: no stray {} line when haconfig has no extra keys
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "(?m)^\\s*\\{\\}\\s*$"

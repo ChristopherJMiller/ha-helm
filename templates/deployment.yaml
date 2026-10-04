@@ -130,7 +130,9 @@ spec:
               lovelace:
               {{- toYaml $lovelace | nindent 16 }}
               {{- end }}
+              {{- if $haRest }}
               {{- toYaml $haRest | nindent 14 }}
+              {{- end }}
 
               # Required DB Section
               recorder:
