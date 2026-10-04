@@ -4,6 +4,14 @@
 {{- $db_secret_name := default (printf "%s-postgresql" .Release.Name) .Values.externalPostgres.passwordFromSecretKeyRef.name -}}
 {{- $db_secret_key := default "postgres-password" .Values.externalPostgres.passwordFromSecretKeyRef.key -}}
 {{/*
+The recorder db_url is `!env_var HA_DB_URL`, so the password never lands in the
+generated configuration.yaml, logs or args. DB_PASSWORD must precede HA_DB_URL:
+Kubernetes expands $(VAR) only from variables defined earlier in the list.
+*/}}
+{{- $dbEnv := list
+      (dict "name" "DB_PASSWORD" "valueFrom" (dict "secretKeyRef" (dict "name" $db_secret_name "key" $db_secret_key)))
+      (dict "name" "HA_DB_URL" "value" (printf "postgresql://%s:$(DB_PASSWORD)@%s:%v/%s" $db_user $db_host $db_port .Values.database.name)) -}}
+{{/*
 Build a single, merged `homeassistant:` map for the generated configuration.yaml.
 Consumers may pass `haconfig.homeassistant`; `externalUrl` and `packages` merge
 into that same map so exactly one `homeassistant:` block is emitted.
@@ -84,9 +92,9 @@ spec:
           - '-e'
           - '-c'
           - |
-              echo $(DB_PASSWORD) && PGPASSWORD=$(DB_PASSWORD) psql -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }} -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.database.name }}'" | grep -q 1 || PGPASSWORD="$(DB_PASSWORD)" psql -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }} -c "CREATE DATABASE {{ .Values.database.name }}"
+              psql -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }} -tc "SELECT 1 FROM pg_database WHERE datname = '{{ .Values.database.name }}'" | grep -q 1 || psql -U {{ $db_user }} -h {{ $db_host }} -p {{ $db_port }} -c "CREATE DATABASE {{ .Values.database.name }}"
           env:
-            - name: DB_PASSWORD
+            - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $db_secret_name }}
@@ -127,16 +135,10 @@ spec:
               # Required DB Section
               recorder:
                 purge_keep_days: {{ .Values.database.purgeKeepDays }}
-                db_url: postgresql://{{ $db_user }}:$(DB_PASSWORD)@{{ $db_host }}:{{ $db_port }}/{{ .Values.database.name }}
+                db_url: !env_var HA_DB_URL
                 exclude:
                   {{- toYaml .Values.database.exclude | nindent 18 }}
               ' > /config/configuration.yaml
-          env:
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $db_secret_name }}
-                  key: {{ $db_secret_key }}
           volumeMounts:
             - mountPath: /config
               name: config
@@ -157,6 +159,47 @@ spec:
           volumeMounts:
             - mountPath: /config
               name: persist-configs
+      {{- if .Values.components.enabled }}
+        - name: install-components
+          image: "{{ .Values.components.image.repository }}:{{ .Values.components.image.tag }}"
+          imagePullPolicy: {{ .Values.components.image.pullPolicy }}
+          command:
+            - 'sh'
+            - '-c'
+            - |
+              set -eu
+              install_integration() {  # name repo version
+                marker="/config/custom_components/$1/.pinned-version"
+                if [ -f "$marker" ] && [ "$(cat "$marker")" = "$3" ]; then echo "$1 $3 present"; return; fi
+                tmp=$(mktemp -d)
+                wget -qO "$tmp/src.tgz" "https://github.com/$2/archive/refs/tags/$3.tar.gz"
+                tar -xzf "$tmp/src.tgz" -C "$tmp"
+                src=$(find "$tmp" -maxdepth 3 -type d -path "*/custom_components/$1" | head -n1)
+                [ -n "$src" ] || { echo "no custom_components/$1 in $2@$3" >&2; exit 1; }
+                mkdir -p /config/custom_components && rm -rf "/config/custom_components/$1"
+                cp -r "$src" "/config/custom_components/$1" && echo "$3" > "$marker" && rm -rf "$tmp"
+                echo "installed $1 $3"
+              }
+              install_card() {  # name url-with-{version} version
+                dir="/config/www/community/$1"; marker="$dir/.pinned-version"
+                if [ -f "$marker" ] && [ "$(cat "$marker")" = "$3" ]; then echo "$1 $3 present"; return; fi
+                url=$(echo "$2" | sed "s/{version}/$3/g"); mkdir -p "$dir"
+                wget -qO "$dir/$(basename "$url")" "$url" && echo "$3" > "$marker"
+                echo "installed $1 $3"
+              }
+              {{- range .Values.components.integrations }}
+              install_integration {{ .name | quote }} {{ .repo | quote }} {{ .version | quote }}
+              {{- end }}
+              {{- range .Values.components.cards }}
+              install_card {{ .name | quote }} {{ .url | quote }} {{ .version | quote }}
+              {{- end }}
+              {{- range .Values.components.remove }}
+              rm -rf "/config/custom_components/{{ . }}" && echo "removed {{ . }}"
+              {{- end }}
+          volumeMounts:
+            - mountPath: /config
+              name: persist-configs
+      {{- end }}
       {{- if .Values.hacs }}
         - name: bootstrap-hacs-if-needed
           image: docker.io/alpine:3.20
@@ -187,6 +230,8 @@ spec:
             - 'check_config'
             - '-c'
             - '/config'
+          env:
+            {{- toYaml $dbEnv | nindent 12 }}
           volumeMounts:
             - mountPath: /config
               name: persist-configs
@@ -205,6 +250,8 @@ spec:
             {{- toYaml .Values.securityContext | nindent 12 }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            {{- toYaml $dbEnv | nindent 12 }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

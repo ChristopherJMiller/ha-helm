@@ -18,7 +18,26 @@ dbClientImage:
   tag: "17-alpine"
   pullPolicy: IfNotPresent
 
+# Install HACS itself (get.hacs.xyz) on first start. Prefer `components` below:
+# pinned, reviewable versions instead of HACS's UI-driven installs.
 hacs: true
+
+# Pinned custom integrations and Lovelace cards, installed by an init container
+# from GitHub at the declared versions (re-installed only when a version changes).
+# Cards land in /config/www/community/<name>/ and are served at
+# /local/community/<name>/<file>; register them as Lovelace resources.
+components:
+  enabled: false
+  image:
+    repository: alpine
+    tag: "3.20"
+    pullPolicy: IfNotPresent
+  # Each: name (dir under custom_components), repo (owner/name), version (git tag).
+  integrations: []
+  # Each: name (dir under www/community), repo, version, url (may contain {version}).
+  cards: []
+  # custom_components dirs to delete (e.g. hacs after its integration entry is removed).
+  remove: []
 
 configGeneration:
   enabled: true

@@ -51,8 +51,8 @@ tests:
           path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
           pattern: "purge_keep_days: 30"
       - matchRegex:
-          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
-          pattern: "db_url:.*testdb"
+          path: spec.template.spec.containers[0].env[1].value
+          pattern: "/testdb$"
 
   - it: should include custom haconfig values
     set:

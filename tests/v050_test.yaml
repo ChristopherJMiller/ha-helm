@@ -1,0 +1,124 @@
+suite: v0.5.0 secrets and components
+templates:
+  - deployment.yaml
+set:
+  externalPostgres:
+    host: acid-ha
+    port: 5432
+    username: postgres
+    passwordFromSecretKeyRef:
+      name: pg
+      key: password
+  checkConfig:
+    enabled: true
+tests:
+  - it: generated config references the env var, never the password
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "db_url: !env_var HA_DB_URL"
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
+          pattern: "DB_PASSWORD"
+      - notExists:
+          path: spec.template.spec.initContainers[?(@.name == "generate-config")].env
+
+  - it: main container defines DB_PASSWORD before HA_DB_URL (env order makes $(DB_PASSWORD) expand)
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: DB_PASSWORD
+      - equal:
+          path: spec.template.spec.containers[0].env[0].valueFrom.secretKeyRef.name
+          value: pg
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: HA_DB_URL
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: "postgresql://postgres:$(DB_PASSWORD)@acid-ha:5432/homeassistant"
+
+  - it: check-config sees the same env
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].env[0].name
+          value: DB_PASSWORD
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].env[1].name
+          value: HA_DB_URL
+
+  - it: create-db never echoes or interpolates the password
+    asserts:
+      - notMatchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "create-ha-db-if-missing")].command[3]
+          pattern: "echo|DB_PASSWORD"
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "create-ha-db-if-missing")].command[3]
+          pattern: 'CREATE DATABASE homeassistant'
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "create-ha-db-if-missing")].env[0].name
+          value: PGPASSWORD
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "create-ha-db-if-missing")].env[0].valueFrom.secretKeyRef.key
+          value: password
+
+  - it: no components installer unless enabled
+    asserts:
+      - notContains:
+          path: spec.template.spec.initContainers
+          content:
+            name: install-components
+          any: true
+
+  - it: components installer renders pinned integrations, cards and removals; hacs off
+    set:
+      hacs: false
+      components:
+        enabled: true
+        integrations:
+          - name: adaptive_lighting
+            repo: basnijholt/adaptive-lighting
+            version: v1.31.0
+        cards:
+          - name: lovelace-mushroom
+            repo: piitaya/lovelace-mushroom
+            version: v5.1.1
+            url: "https://github.com/piitaya/lovelace-mushroom/releases/download/{version}/mushroom.js"
+        remove: [hacs]
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'install_integration "adaptive_lighting" "basnijholt/adaptive-lighting" "v1.31.0"'
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'install_card "lovelace-mushroom" "https://github.com/piitaya/lovelace-mushroom/releases/download/\{version\}/mushroom.js" "v5.1.1"'
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'rm -rf "/config/custom_components/hacs"'
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].image
+          value: "alpine:3.20"
+      - equal:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].volumeMounts[0].name
+          value: persist-configs
+      - notContains:
+          path: spec.template.spec.initContainers
+          content:
+            name: bootstrap-hacs-if-needed
+          any: true
+
+  - it: installer runs after the config bootstrap and before check-config
+    set:
+      hacs: false
+      components:
+        enabled: true
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[3].name
+          value: bootstrap-configs-if-needed
+      - equal:
+          path: spec.template.spec.initContainers[4].name
+          value: install-components
+      - equal:
+          path: spec.template.spec.initContainers[5].name
+          value: check-config

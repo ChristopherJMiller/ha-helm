@@ -99,6 +99,37 @@ checkConfig:
   enabled: true
 ```
 
+### Pinned Custom Components
+
+Instead of HACS, declare custom integrations and Lovelace cards with exact
+versions; an `install-components` init container fetches them from GitHub
+before `check-config` runs, and re-installs one only when its version changes:
+
+```yaml
+hacs: false
+components:
+  enabled: true
+  integrations:
+    - name: adaptive_lighting            # dir under custom_components
+      repo: basnijholt/adaptive-lighting
+      version: v1.31.0                    # git tag
+  cards:
+    - name: lovelace-mushroom             # dir under www/community
+      repo: piitaya/lovelace-mushroom
+      version: v5.1.1
+      url: https://github.com/piitaya/lovelace-mushroom/releases/download/{version}/mushroom.js
+  remove: [hacs]                          # custom_components dirs to delete
+```
+
+Cards are served at `/local/community/<name>/<file>`; register that URL as a
+Lovelace resource (add `?v=<version>` to bust the browser cache on upgrades).
+
+### Database Password
+
+The password comes from `externalPostgres.passwordFromSecretKeyRef` and is never
+rendered: the generated config says `db_url: !env_var HA_DB_URL`, and `HA_DB_URL`
+is assembled by Kubernetes from the secret in the container's environment.
+
 ### Reload on Change
 
 The chart does **not** watch ConfigMaps for changes — that's the consumer's job.
