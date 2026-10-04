@@ -172,3 +172,41 @@ tests:
       - notMatchRegex:
           path: spec.template.spec.initContainers[?(@.name == "generate-config")].command[2]
           pattern: "(?m)^\\s*\\{\\}\\s*$"
+
+  - it: a card is downloaded to a temp file first; a failed fetch exits non-zero before the old card is touched
+    set:
+      components:
+        enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'if ! wget -qO "\$new" "\$url" \|\| \[ ! -s "\$new" \]; then .*exit 1; fi\n\s*# Empty the dir'
+
+  - it: refuses an empty or path-like component name (it would wipe every card / integration)
+    set:
+      components:
+        enabled: true
+        cards:
+          - {name: "", repo: a/b, version: v1, url: "https://x/{version}/c.js"}
+    asserts:
+      - failedTemplate:
+          errorPattern: "components.cards: invalid name"
+
+  - it: refuses an empty remove entry
+    set:
+      components:
+        enabled: true
+        remove: [""]
+    asserts:
+      - failedTemplate:
+          errorPattern: "components.remove: invalid name"
+
+  - it: refuses a malformed repo
+    set:
+      components:
+        enabled: true
+        integrations:
+          - {name: x, repo: "../evil", version: v1}
+    asserts:
+      - failedTemplate:
+          errorPattern: "components.integrations: invalid repo"
