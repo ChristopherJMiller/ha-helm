@@ -183,7 +183,9 @@ spec:
               install_card() {  # name url-with-{version} version
                 dir="/config/www/community/$1"; marker="$dir/.pinned-version"
                 if [ -f "$marker" ] && [ "$(cat "$marker")" = "$3" ]; then echo "$1 $3 present"; return; fi
-                url=$(echo "$2" | sed "s/{version}/$3/g"); mkdir -p "$dir"
+                # Empty the dir: aiohttp serves a <file>.gz/.br sibling in preference to
+                # <file>, so a stale precompressed copy (HACS writes them) would shadow it.
+                url=$(echo "$2" | sed "s/{version}/$3/g"); rm -rf "$dir" && mkdir -p "$dir"
                 wget -qO "$dir/$(basename "$url")" "$url" && echo "$3" > "$marker"
                 echo "installed $1 $3"
               }

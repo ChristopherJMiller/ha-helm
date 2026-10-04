@@ -122,3 +122,12 @@ tests:
       - equal:
           path: spec.template.spec.initContainers[5].name
           value: check-config
+
+  - it: card (re)install empties the card dir, so stale .gz/.br siblings cannot shadow the new file
+    set:
+      components:
+        enabled: true
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.initContainers[?(@.name == "install-components")].command[2]
+          pattern: 'rm -rf "\$dir" && mkdir -p "\$dir"'
