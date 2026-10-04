@@ -81,6 +81,13 @@ extraConfigMounts: []
 checkConfig:
   enabled: false
 
+# /config/secrets.yaml from a Secret, so packages can use `!secret name` with the
+# values kept out of git (seal the Secret). Mounted read-only into HA and check-config.
+secretsFile:
+  enabled: false
+  secretName: ha-secrets
+  key: secrets.yaml
+
 # YAML-mode Lovelace dashboards ALONGSIDE the default storage-mode dashboard.
 # The global mode stays `storage` (do NOT set mode: yaml globally — it breaks
 # HACS custom-card resource auto-registration). Dashboard files come from an

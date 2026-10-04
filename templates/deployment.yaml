@@ -270,6 +270,12 @@ spec:
             {{- with .Values.extraConfigMounts }}
             {{- include "home-assistant.extraConfigVolumeMounts" . | trimPrefix "\n" | nindent 12 }}
             {{- end }}
+            {{- if .Values.secretsFile.enabled }}
+            - name: ha-secrets
+              mountPath: /config/secrets.yaml
+              subPath: secrets.yaml
+              readOnly: true
+            {{- end }}
       {{- end }}
       containers:
         - name: {{ .Chart.Name }}
@@ -299,6 +305,12 @@ spec:
             {{- end }}
             {{- with .Values.extraConfigMounts }}
             {{- include "home-assistant.extraConfigVolumeMounts" . | trimPrefix "\n" | nindent 12 }}
+            {{- end }}
+            {{- if .Values.secretsFile.enabled }}
+            - name: ha-secrets
+              mountPath: /config/secrets.yaml
+              subPath: secrets.yaml
+              readOnly: true
             {{- end }}
           {{- with .Values.volumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -338,6 +350,14 @@ spec:
         - name: nginx-config
           configMap:
             name: {{ include "home-assistant.fullname" . }}-nginx-config
+        {{- end }}
+        {{- if .Values.secretsFile.enabled }}
+        - name: ha-secrets
+          secret:
+            secretName: {{ .Values.secretsFile.secretName }}
+            items:
+              - key: {{ .Values.secretsFile.key }}
+                path: secrets.yaml
         {{- end }}
         {{- with .Values.extraConfigMounts }}
         {{- include "home-assistant.extraConfigVolumes" . | trimPrefix "\n" | nindent 8 }}

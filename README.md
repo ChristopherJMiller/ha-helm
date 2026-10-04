@@ -134,6 +134,18 @@ The password comes from `externalPostgres.passwordFromSecretKeyRef` and is never
 rendered: the generated config says `db_url: !env_var HA_DB_URL`, and `HA_DB_URL`
 is assembled by Kubernetes from the secret in the container's environment.
 
+### Secrets for `!secret`
+
+Packages can use `!secret name`; the values come from a (sealed) Secret, mounted
+read-only as `/config/secrets.yaml` in HA and in `check-config`:
+
+```yaml
+secretsFile:
+  enabled: true
+  secretName: ha-secrets   # Secret with key secrets.yaml: "name: value" lines
+  key: secrets.yaml
+```
+
 ### Reload on Change
 
 The chart does **not** watch ConfigMaps for changes — that's the consumer's job.

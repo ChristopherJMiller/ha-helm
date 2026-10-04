@@ -1,0 +1,44 @@
+suite: v0.6.0 secrets file
+templates:
+  - deployment.yaml
+set:
+  checkConfig:
+    enabled: true
+tests:
+  - it: no secrets mount by default
+    asserts:
+      - notContains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-secrets
+          any: true
+  - it: mounts secrets.yaml from the Secret into HA and check-config
+    set:
+      secretsFile:
+        enabled: true
+        secretName: ha-secrets
+        key: secrets.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: ha-secrets
+            secret:
+              secretName: ha-secrets
+              items:
+                - key: secrets.yaml
+                  path: secrets.yaml
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: ha-secrets
+            mountPath: /config/secrets.yaml
+            subPath: secrets.yaml
+            readOnly: true
+      - contains:
+          path: spec.template.spec.initContainers[?(@.name == "check-config")].volumeMounts
+          content:
+            name: ha-secrets
+            mountPath: /config/secrets.yaml
+            subPath: secrets.yaml
+            readOnly: true
